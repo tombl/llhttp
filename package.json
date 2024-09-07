@@ -2,8 +2,8 @@
   "name": "llhttp",
   "version": "9.2.1",
   "description": "HTTP parser in LLVM IR",
-  "main": "lib/llhttp.js",
-  "types": "lib/llhttp.d.ts",
+  "main": "lib/wasm.js",
+  "types": "lib/wasm.d.ts",
   "files": [
     "lib",
     "src",
