@@ -2,10 +2,7 @@
 
 set -e
 
-WASM_SRC="$(dirname "$0")/../"
-WASM_OUT="$(dirname "$0")/../build/wasm"
-
-cd "$WASM_SRC"
+cd "$(dirname "$0")/../"
 
 if [[ -z "$WASM_PLATFORM" && -n "$1" ]]; then
     WASM_PLATFORM=$(docker info -f "{{.OSType}}/{{.Architecture}}")
@@ -38,30 +35,54 @@ case "$1" in
         ;;
 esac
 
-mkdir -p "$WASM_OUT"
+out=build/wasm
+mkdir -p "$out"
 
 npm run build
 
-clang \
-    --sysroot=/usr/share/wasi-sysroot \
-    -target wasm32-unknown-wasi \
-    -Ofast \
-    -fno-exceptions \
-    -fvisibility=hidden \
-    -mexec-model=reactor \
-    -Wl,-error-limit=0 \
-    -Wl,-O3 \
-    -Wl,--lto-O3 \
-    -Wl,--strip-all \
-    -Wl,--allow-undefined \
-    -Wl,--export-dynamic \
-    -Wl,--export-table \
-    -Wl,--export=malloc \
-    -Wl,--export=free \
-    -Wl,--no-entry \
-    build/c/*.c \
-    src/native/*.c \
-    -Ibuild \
-    -o "$WASM_OUT/llhttp.wasm"
+# shellcheck disable=SC2054 # the commas are intentional
+CFLAGS=(
+    --sysroot=/usr/share/wasi-sysroot
+    -target wasm32-unknown-wasi
+    -Ofast
+    -fno-exceptions
+    -fvisibility=hidden
+    -mexec-model=reactor
+    -Wl,-error-limit=0
+    -Wl,-O3
+    -Wl,--lto-O3
+    -Wl,--strip-all
+    -Wl,--allow-undefined
+    -Wl,--export-dynamic
+    -Wl,--export-table
+    -Wl,--export=malloc
+    -Wl,--export=free
+    -Wl,--no-entry
+    build/c/*.c
+    src/native/*.c
+    -Ibuild
+)
 
-cp lib/llhttp/{constants,utils}.* "$WASM_OUT/"
+clang "${CFLAGS[@]}" -mno-bulk-memory -mno-multivalue -mno-relaxed-simd -mno-sign-ext -mno-simd128 -o "$out/llhttp_baseline.wasm"
+clang "${CFLAGS[@]}"    -mbulk-memory    -mmultivalue    -mrelaxed-simd    -msign-ext    -msimd128 -o "$out/llhttp_opt.wasm"
+
+js_template="'use strict'
+const { Buffer } = require('node:buffer')
+const wasmBase64 = '%s'
+let wasmBuffer
+Object.defineProperty(module, 'exports', {
+  get: () => {
+    return wasmBuffer
+      ? wasmBuffer
+      : (wasmBuffer = Buffer.from(wasmBase64, 'base64'))
+  }
+})
+"
+
+
+# shellcheck disable=SC2059 # I want to use the variable
+printf "$js_template" "$(base64 -w0 "$out/llhttp_baseline.wasm")" > "$out/llhttp_baseline.js"
+# shellcheck disable=SC2059 
+printf "$js_template" "$(base64 -w0 "$out/llhttp_opt.wasm")" > "$out/llhttp_opt.js"
+
+cp lib/llhttp/{constants,utils}.* "$out/"

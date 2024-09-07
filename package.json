@@ -6,7 +6,8 @@
   "types": "lib/llhttp.d.ts",
   "files": [
     "lib",
-    "src"
+    "src",
+    "build"
   ],
   "scripts": {
     "bench": "ts-node bench/",
